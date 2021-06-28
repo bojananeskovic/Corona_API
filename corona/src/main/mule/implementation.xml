@@ -223,9 +223,9 @@ FROM hospital;]]></db:sql>
 	&lt;/body&gt;
 &lt;/html&gt;</content>
 		</parse-template>
-		<email:send doc:name="Send" doc:id="64a35a34-a57d-48e9-a648-5fcc61284c82" config-ref="Email_SMTP" fromAddress="bojananeskovic007@gmail.com" subject="Covid-19: Daily Report">
+		<email:send doc:name="Send" doc:id="64a35a34-a57d-48e9-a648-5fcc61284c82" config-ref="Email_SMTP" fromAddress="" subject="Covid-19: Daily Report">
 			<email:to-addresses >
-				<email:to-address value="bojana.neskovic@devoteam.com" />
+				<email:to-address value="" />
 			</email:to-addresses>
 			<email:body contentType="text/html" >
 				<email:content ><![CDATA[#[vars.emailBody]]]></email:content>
