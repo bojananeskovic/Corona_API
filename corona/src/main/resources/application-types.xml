@@ -1,0 +1,49 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<types:mule xmlns:types="http://www.mulesoft.org/schema/mule/types">
+  <types:catalog>
+    <types:type name="person_json" format="json">
+      <types:shape format="weave" example="examples/PersonExample.json"><![CDATA[%dw 2.0
+
+type person_json = {|
+  jmbg: String, 
+  name: String, 
+  surname: String, 
+  citizenship: String, 
+  stateFrom: String, 
+  symptoms: Boolean
+|} {"example": "{\\\"jmbg\\\":\\\"1810997665425\\\",\\\"name\\\":\\\"Petar\\\",\\\"surname\\\":\\\"Petrovic\\\",\\\"citizenship\\\":\\\"Serbian\\\",\\\"stateFrom\\\":\\\"Hungary\\\",\\\"symptoms\\\":true}"}
+
+]]></types:shape>
+    </types:type>
+    <types:type name="person_in_isolation_json" format="json">
+      <types:shape format="weave" example="examples/PersonIsolationExample.json"><![CDATA[%dw 2.0
+
+type person_in_isolation_json = {|
+  jmbg: String, 
+  name: String, 
+  surname: String, 
+  isolationType: Number {"typeId": "int"}
+|} {"example": "{\\\"jmbg\\\":\\\"1234567891010\\\",\\\"name\\\":\\\"Petar\\\",\\\"surname\\\":\\\"Petrovic\\\",\\\"isolationType\\\":14}"}
+
+]]></types:shape>
+    </types:type>
+  </types:catalog>
+  <types:enrichment select="#89cac222-94c8-4c24-83e5-e9d80ff6f4f4">
+    <types:processor-declaration>
+      <types:input-event>
+        <types:message>
+          <types:payload type="person_json"/>
+        </types:message>
+      </types:input-event>
+    </types:processor-declaration>
+  </types:enrichment>
+  <types:enrichment select="#043c72fb-2013-4777-a218-91bfbd12349b">
+    <types:processor-declaration>
+      <types:output-event>
+        <types:message>
+          <types:payload type="person_in_isolation_json[]"/>
+        </types:message>
+      </types:output-event>
+    </types:processor-declaration>
+  </types:enrichment>
+</types:mule>

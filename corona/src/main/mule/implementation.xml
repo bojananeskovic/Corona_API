@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+	<flow name="postPerson" doc:id="f98ba089-d66e-4c67-9984-778978c96e83" >
+		<set-variable value="#[payload]" doc:name="person" doc:id="89cac222-94c8-4c24-83e5-e9d80ff6f4f4" variableName="person"/>
+		<validation:is-true doc:name="Is a citizen of Serbia" doc:id="9adf2242-2465-4aa6-ba33-752c0449ff39" expression="#[['Serbian'] contains vars.person.citizenship]">
+			<error-mapping sourceType="VALIDATION:INVALID_BOOLEAN" targetType="POSTPERSON:NOT_A_SERBIAN_CITIZEN" />
+		</validation:is-true>
+		<choice doc:name="Choice" doc:id="b8ebabd8-466b-42db-93b0-d2c549835c18" >
+			<when expression="#[payload.symptoms == false]">
+				<set-variable value="#[0 as Number]" doc:name="symptoms" doc:id="6e6873e9-9603-4f9c-b981-8cdb4ad894ee" variableName="symptoms"/>
+				<flow-ref doc:name="selfIsolation" doc:id="63bc2f94-e119-4747-b0d2-e82219f6c806" name="selfIsolation"/>
+			</when>
+			<otherwise >
+				<set-variable value="#[1 as Number]" doc:name="symptoms" doc:id="8390054f-6ae4-4399-a2b0-345d9ed716c1" variableName="symptoms"/>
+				<flow-ref doc:name="inHospital" doc:id="20a614f8-c690-4730-9740-6be8a83e4863" name="inHospital"/>
+			</otherwise>
+		</choice>
+	</flow>
+	<flow name="selfIsolation" doc:id="c865e177-7737-49ac-9f32-254ff17261ea" >
+		<db:select doc:name="Check country" doc:id="f27c94b0-1933-4e14-a2dc-e57b96985d5e" config-ref="Database_Config">
+			<db:sql ><![CDATA[SELECT contagionLevel from country
+WHERE name=:stateFrom;]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	'stateFrom': vars.person.stateFrom
+}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload.contagionLevel[0]]" doc:name="contagionLevel" doc:id="56e8a3b6-68b5-4d98-a1fd-4c0059bb2d31" variableName="contagionLevel"/>
+		<choice doc:name="Choice" doc:id="97e6e873-dec5-4b6d-bf63-07e447a5aa1b" >
+			<when expression="#[vars.contagionLevel == true]">
+				<set-variable value="#[now() + |P28D|]" doc:name="endDate" doc:id="7df88e33-61e3-4a84-8544-35d5dac0ce67" variableName="endDate"/>
+			</when>
+			<otherwise >
+				<set-variable value="#[now() + |P14D|]" doc:name="endDate" doc:id="e94fbe84-176c-4086-afc0-64ed19e88952" variableName="endDate"/>
+			</otherwise>
+		</choice>
+		<db:insert doc:name="Insert" doc:id="663b33c8-aab0-478f-b8b1-8badbb0a8d5e" config-ref="Database_Config">
+			<error-mapping sourceType="DB:QUERY_EXECUTION" targetType="POSTPERSON:DUPLICATE_JMBG" />
+			<db:sql ><![CDATA[INSERT INTO peopleQuarantine (jmbg, name, surname, symptoms, citizenship, stateFrom, startDate, endDate) 
+VALUES (:jmbg, :name, :surname, :symptoms, :citizenship, :stateFrom, :startDate, :endDate);]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	'jmbg': vars.person.jmbg,
+	'name': vars.person.name,
+	'surname':  vars.person.surname,
+	'symptoms': vars.person.symptoms,
+	'citizenship': vars.person.citizenship,
+	'stateFrom': vars.person.stateFrom,
+	'startDate': now() as String {format: "yyyy-MM-dd"},
+	'endDate': vars.endDate as String {format: "yyyy-MM-dd"}
+}]]]></db:input-parameters>
+		</db:insert>
+		<set-payload value="The person was self-isolated." doc:name="Set Payload" doc:id="83505526-c2c8-4ebe-8511-b91fc2de7ac6" />
+	</flow>
+	<flow name="inHospital" doc:id="a153de9a-b61e-4d88-92b7-6b389df4a3af" >
+		<db:select doc:name="Check hospital" doc:id="d17a04c6-61b3-470b-b8e0-4af55b7614f9" config-ref="Database_Config">
+			<db:sql ><![CDATA[ SELECT hospitalId,freeSpots FROM hospital
+ WHERE freeSpots = (SELECT MAX(freeSpots) FROM hospital)]]></db:sql>
+		</db:select>
+		<set-variable value="#[payload.hospitalID[0]]" doc:name="hospitalID" doc:id="dce6dbae-e84e-40cf-aa7c-6a42e8b284cc" variableName="hospitalID"/>
+		<set-variable value="#[payload.freeSpots[0]]" doc:name="freeSpots" doc:id="21a04efd-25db-4bcd-bf89-f44d6f84a437" variableName="freeSpots"/>
+		<validation:is-number doc:name="freeSpots&gt;=1" doc:id="9a6c871b-0d9d-4438-befc-ba66ce55b1f8" value="#[vars.freeSpots]" minValue="1" numberType="INTEGER" message="There are no free spots."/>
+		<db:insert doc:name="Insert" doc:id="3f3b1367-5567-4750-8502-f90b65c2114a" config-ref="Database_Config">
+			<error-mapping sourceType="DB:QUERY_EXECUTION" targetType="POSTPERSON:DUPLICATE_JMBG" />
+			<db:sql ><![CDATA[INSERT INTO peopleQuarantine (jmbg, name, surname, symptoms, citizenship, stateFrom, hospitalID) 
+VALUES (:jmbg, :name, :surname, :symptoms, :citizenship, :stateFrom, :hospitalId);]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	'jmbg': vars.person.jmbg,
+	'name': vars.person.name,
+	'surname': vars.person.surname,
+	'symptoms': vars.person.symptoms,
+	'hospitalId': vars.hospitalID,
+	'citizenship': vars.person.citizenship,
+	'stateFrom': vars.person.stateFrom
+}]]]></db:input-parameters>
+		</db:insert>
+		<set-payload value="The person was hospitalized." doc:name="Set Payload" doc:id="6022ba91-eda1-4677-b0b2-b6a9c4e990b9" />
+	</flow>
+	<flow name="personsIsolation" doc:id="02507862-cf2d-4c0d-9693-670e9ee00e05" >
+		<set-variable value="#[message.attributes.queryParams.isolationType]" doc:name="isolationType" doc:id="07a83c36-e6a5-4568-8755-ced506e8f5c8" variableName="isolationType"/>
+		<choice doc:name="Choice" doc:id="4b7544b6-45b4-4e7c-947a-8442eee72754" >
+			<when expression="#[['14', '28'] contains vars.isolationType]">
+				<db:select doc:name="Select" doc:id="f0773d44-cc01-41dd-a149-547860ed2559" config-ref="Database_Config">
+					<db:sql ><![CDATA[SELECT jmbg, name, surname, (DATEDIFF(endDate,startDate)) as isolationType 
+FROM peopleQuarantine
+WHERE (hospitalId IS NULL AND (DATEDIFF(endDate,startDate))=:daysInIsolation);]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	"daysInIsolation": vars.isolationType
+}]]]></db:input-parameters>
+				</db:select>
+			</when>
+			<otherwise >
+				<validation:is-null doc:name="isolationType" doc:id="a5273663-dd67-4f16-93ac-f2a81133cdd5" value="#[vars.isolationType]">
+					<error-mapping targetType="GETPERSONSINISOLATION:INVALID_ISOLATION_TYPE" />
+				</validation:is-null>
+				<db:select doc:name="Select" doc:id="a0f9ddc2-edbc-4e42-8f4a-27027c43cdfd" config-ref="Database_Config">
+					<db:sql ><![CDATA[SELECT jmbg, name, surname, (DATEDIFF(endDate,startDate)) as isolationType 
+FROM peopleQuarantine
+WHERE hospitalId IS NULL;]]></db:sql>
+				</db:select>
+			</otherwise>
+		</choice>
+		<validation:is-true doc:name="payload is not null" doc:id="28a895f8-4c4a-4084-9c2e-4e42d4467a8d" expression="#[sizeOf(payload)!=0]">
+			<error-mapping sourceType="VALIDATION:INVALID_BOOLEAN" targetType="GETPERSONSINISOLATION:EMPTY_DB" />
+		</validation:is-true>
+		<ee:transform doc:name="Transform Message" doc:id="043c72fb-2013-4777-a218-91bfbd12349b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload map ( payload01 , indexOfPayload01 ) -> {
+	jmbg: payload01.jmbg,
+	name: payload01.name,
+	surname: payload01.surname,
+	isolationType: payload01.isolationType default 0
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="checkIfHome" doc:id="1c9cfa59-2c2f-42bc-806c-57d7ff2c1926" >
+		<set-variable value="#[message.attributes.uriParams.jmbg]" doc:name="jmbg" doc:id="90273e68-2897-412b-bbd1-ef2bdc05eaa2" variableName="jmbg"/>
+		<db:select doc:name="Select" doc:id="0ed4abd1-b2af-475a-b20f-0a96b5ebe31a" config-ref="Database_Config">
+			<db:sql ><![CDATA[SELECT jmbg, name, surname, (DATEDIFF(endDate, CURDATE())) as timeLeftInIsolation 
+FROM peopleQuarantine
+WHERE (hospitalID IS NULL) AND jmbg=:jmbg;]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	"jmbg": vars.jmbg
+}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload.timeLeftInIsolation[0]]" doc:name="timeLeftInIsolation" doc:id="f249ef56-07a9-42dc-8143-5ca150764cab" variableName="timeLeftInIsolation"/>
+		<choice doc:name="Choice" doc:id="4e6daaed-77f3-4e18-b332-1f46576b0ee5" >
+			<when expression="#[payload.timeLeftInIsolation[0]&lt;=0]">
+				<db:delete doc:name="Delete" doc:id="eeafec19-766f-46c0-aabc-a7d97149eaab" config-ref="Database_Config">
+					<db:sql ><![CDATA[DELETE FROM peopleQuarantine WHERE jmbg = :jmbg;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	"jmbg": vars.jmbg
+}]]]></db:input-parameters>
+				</db:delete>
+				<set-payload value="The person is no longer in isolation." doc:name="Set Payload" doc:id="2352e0ce-c64e-400e-abe5-64b3d715ba53" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="affd551a-888b-4d2a-8bae-74d71384f860" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"isAtHome": true,
+	"daysLeft": vars.timeLeftInIsolation
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</flow>
+	<flow name="sendEmail" doc:id="d4737085-ee4d-4712-ae2a-d5e5367579e5" >
+		<scheduler doc:name="Scheduler" doc:id="8cdb8956-727a-4649-a5dd-0fad2ac4c5c5" >
+			<scheduling-strategy >
+				<cron timeZone="Europe/Belgrade" expression="0 45 14 * * ? *"/>
+			</scheduling-strategy>
+		</scheduler>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="c49c52a0-aac2-4f34-9d83-f2d05fbb9b6a" >
+			<route >
+				<db:select doc:name="In isolation" doc:id="9cbdb249-2872-4804-8ce7-cb6c0878d3e4" config-ref="Database_Config">
+					<db:sql ><![CDATA[SELECT COUNT(*) as inIsolation 
+FROM peopleQuarantine
+WHERE hospitalID IS NULL;]]></db:sql>
+				</db:select>
+			</route>
+			<route >
+				<db:select doc:name="Out of isolation" doc:id="a8d24a59-5099-44df-8ffa-c6c9684f7fbd" config-ref="Database_Config">
+					<db:sql ><![CDATA[SELECT COUNT(*) as outOfIsolation FROM historyQuarantine;]]></db:sql>
+				</db:select>
+			</route>
+			<route >
+				<db:select doc:name="With symptoms" doc:id="1b894be7-b7d2-458e-8e00-96278d739f88" config-ref="Database_Config">
+					<db:sql ><![CDATA[SELECT COUNT(*) as withSymptoms 
+FROM peopleQuarantine
+WHERE hospitalID IS NOT NULL;]]></db:sql>
+				</db:select>
+			</route>
+			<route >
+				<db:select doc:name="Total number of hospitals" doc:id="5188036e-3c12-47a2-842d-3ad86911180a" config-ref="Database_Config">
+					<db:sql ><![CDATA[SELECT COUNT(*) as totalNumberOfHospitals 
+FROM hospital;]]></db:sql>
+				</db:select>
+			</route>
+		</scatter-gather>
+		<parse-template doc:name="Parse Template" doc:id="c8eeee11-4dd9-4ee1-a66a-225d37e8da4a" target="emailBody" targetValue="#[payload]">
+			<content >&lt;html&gt;
+	&lt;head&gt;
+		&lt;style type=&quot;text/css&quot;&gt;
+		.myTable { background-color:#f5c6c6;border-collapse:collapse; }
+		.myTable th { background-color:#362f2f;color:white; }
+		.myTable td, .myTable th { padding:5px;border:1px solid #000; }
+		&lt;/style&gt;
+	&lt;/head&gt;
+	&lt;body&gt;
+	&lt;h3&gt;Covid-19: Daily Report&lt;/h3&gt;
+		&lt;table class=&quot;myTable&quot;&gt;
+			&lt;thead&gt;
+				&lt;tr&gt;
+					&lt;th style=&quot;padding: 10px&quot;&gt;In isolation&lt;/th&gt;
+					&lt;th style=&quot;padding: 10px&quot;&gt;Out of isolation&lt;/th&gt;
+					&lt;th style=&quot;padding: 10px&quot;&gt;With symptoms&lt;/th&gt;
+					&lt;th style=&quot;padding: 10px&quot;&gt;Number of hospitals&lt;/th&gt;
+				&lt;/tr&gt;
+			&lt;/thead&gt;
+			&lt;tbody&gt;
+				&lt;tr&gt;
+					&lt;td style=&quot;text-align:center; padding: 10px&quot;&gt;#[payload.&quot;0&quot;.payload.inIsolation[0]]&lt;/td&gt;
+					&lt;td style=&quot;text-align:center; padding: 10px&quot;&gt;#[payload.&quot;1&quot;.payload.outOfIsolation[0]]&lt;/td&gt;
+					&lt;td style=&quot;text-align:center; padding: 10px&quot;&gt;#[payload.&quot;2&quot;.payload.withSymptoms[0]]&lt;/td&gt;
+					&lt;td style=&quot;text-align:center; padding: 10px&quot;&gt;#[payload.&quot;3&quot;.payload.totalNumberOfHospitals[0]]&lt;/td&gt;
+				&lt;/tr&gt;
+			&lt;/tbody&gt;
+		&lt;/table&gt;
+	&lt;/body&gt;
+&lt;/html&gt;</content>
+		</parse-template>
+		<email:send doc:name="Send" doc:id="64a35a34-a57d-48e9-a648-5fcc61284c82" config-ref="Email_SMTP" fromAddress="bojananeskovic007@gmail.com" subject="Covid-19: Daily Report">
+			<email:to-addresses >
+				<email:to-address value="bojana.neskovic@devoteam.com" />
+			</email:to-addresses>
+			<email:body contentType="text/html" >
+				<email:content ><![CDATA[#[vars.emailBody]]]></email:content>
+			</email:body>
+		</email:send>
+	</flow>
+</mule>
